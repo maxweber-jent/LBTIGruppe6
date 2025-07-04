@@ -1,60 +1,68 @@
+#include <M5Stack.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include <DHT.h>
+#include <ArduinoJson.h>
+#include <M5UnitENV.h>
 
-#define WIFI_SSID     "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+// WLAN und MQTT Broker
+const char* ssid = "sssid";
+const char* password = "wifi_password";
+const char* mqtt_server = "broker.hivemq.com";
 
-#define MQTT_SERVER   "YOUR_MQTT_BROKER_ADDRESS"
-#define MQTT_PORT     1883
+WiFiClient wifiClient;
+PubSubClient client(wifiClient);
 
-#define DHTPIN        4 
-#define DHTTYPE       DHT22
+M5UnitENV envSensor;
 
-const char* mqtt_topic = "schule/aks/1-stock/serverraum/server-rack/temperatur";
+unsigned long lastEnvRead = 0;
+unsigned long lastSend = 0;
+StaticJsonDocument<256> jsonDoc;
 
-WiFiClient espClient;
-PubSubClient client(espClient);
-DHT dht(DHTPIN, DHTTYPE);
-
-unsigned long lastMsg = 0;
-const long interval = 30000;
-
-void setup_wifi() {
-  delay(10);
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(WIFI_SSID);
-
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+void callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Nachricht erhalten in Topic: ");
+  Serial.println(topic);
+  Serial.print("Payload: ");
+  for (unsigned int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
   }
-  Serial.println("\nWiFi connected, IP address: ");
-  Serial.println(WiFi.localIP());
+  Serial.println();
 }
 
 void reconnect() {
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    if (client.connect("ESP32Client_Group6")) {
-      Serial.println("connected");
+    Serial.print("Versuche MQTT-Verbindung...");
+    String clientId = "M5Stack-";
+    clientId += String(random(0xffff), HEX);
+    if (client.connect(clientId.c_str())) {
+      Serial.println("verbunden");
+      client.subscribe("M5Stack");
     } else {
-      Serial.print("failed, rc=");
+      Serial.print("Fehler, rc=");
       Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
+      Serial.println(" Warte 5 Sekunden...");
       delay(5000);
     }
   }
 }
 
 void setup() {
+  M5.begin();
   Serial.begin(115200);
-  dht.begin();
-  setup_wifi();
-  client.setServer(MQTT_SERVER, MQTT_PORT);
+  Wire.begin();
+
+  envSensor.begin();
+
+  WiFi.begin(ssid, password);
+  Serial.print("Verbinde mit WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi verbunden, IP: ");
+  Serial.println(WiFi.localIP());
+
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
 }
 
 void loop() {
@@ -64,23 +72,35 @@ void loop() {
   client.loop();
 
   unsigned long now = millis();
-  if (now - lastMsg > interval) {
-    lastMsg = now;
 
-    float t = dht.readTemperature();
-    if (isnan(t)) {
-      Serial.println("Failed to read from DHT sensor!");
-      return;
-    }
+  // ENV alle 5 Sekunden lesen
+  if (now - lastEnvRead > 5000) {
+    lastEnvRead = now;
+    float temperature = envSensor.temperature;
+    float humidity = envSensor.humidity;
+    float pressure = envSensor.pressure;
 
-    char payload[128];
-    snprintf(payload, sizeof(payload),
-      "{\"location\":\"Alfons-Kern-Schule\",\"room\":\"Serverraum\",\"value\":%.2f,\"unit\":\"°C\",\"timestamp\":%lu}",
-      t, (unsigned long)time(NULL));
+    Serial.printf("Temp: %.2f °C, Feuchte: %.2f %%, Druck: %.2f hPa\n",
+                  temperature, humidity, pressure);
+  }
 
-    Serial.print("Publishing: ");
-    Serial.println(payload);
+  // JSON alle 60 Sekunden senden
+  if (now - lastSend > 60000) {
+    lastSend = now;
 
-    client.publish(mqtt_topic, payload, true);
+    jsonDoc["location"] = "Alfons-Kern-Schule";
+    jsonDoc["room"] = "Serverraum";
+    jsonDoc["temperature"] = envSensor.temperature;
+    jsonDoc["humidity"] = envSensor.humidity;
+    jsonDoc["pressure"] = envSensor.pressure;
+    jsonDoc["timestamp"] = now / 1000;
+
+    char buffer[256];
+    serializeJson(jsonDoc, buffer);
+
+    Serial.print("Sende JSON: ");
+    Serial.println(buffer);
+
+    client.publish("M5Stack", buffer);
   }
 }
