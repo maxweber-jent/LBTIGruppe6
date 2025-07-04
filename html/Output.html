@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gruppe 6: Temperatur (Andere Schulen)</title>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <title>Gruppe 6: Temperatur (Andere Schulen, Beispielwerte)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         h1 { color: #333; }
@@ -23,15 +23,26 @@
             font-size: 1.2em;
             font-weight: bold;
         }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            height: 300px !important;
+            max-height: 300px !important;
+            width: 100% !important;
+            max-width: 800px !important;
+        }
     </style>
 </head>
 <body>
-<h1>Serverraum-Überwachung: Temperatur (Andere Schulen)</h1>
-<p>Zeigt die Temperaturdaten von Serverräumen der Alfons-Kern-Schule, Johanna-Wittum-Schule und Hochschule Pforzheim.</p>
+<h1>Serverraum-Überwachung: Temperatur (Andere Schulen, Beispielwerte)</h1>
+<p>Beispielhafte Temperaturdaten von Alfons-Kern-Schule, Johanna-Wittum-Schule und Hochschule Pforzheim.</p>
 <div id="charts-container"></div>
 <script>
-    const MQTT_BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
-    const SUBSCRIBE_TOPIC = 'schule/+/+/+/+/temperatur';
+    const demoSchools = [
+        { location: "Alfons-Kern-Schule", room: "Serverraum", values: [22.3, 22.6, 22.7, 22.5, 22.8, 22.9, 23.1] },
+        { location: "Johanna-Wittum-Schule", room: "Keller Server-Rack", values: [20.9, 21.1, 21.2, 21.0, 21.3, 21.5, 21.7] },
+        { location: "Hochschule Pforzheim", room: "Keller Serverraum", values: [23.8, 24.0, 23.9, 24.1, 24.3, 24.2, 24.4] }
+    ];
     const schoolData = {};
     const CHART_OPTIONS = {
         responsive: true,
@@ -45,7 +56,7 @@
             },
             y: {
                 title: { display: true, text: 'Temperatur (°C)' },
-                min: 15,
+                min: 0,
                 max: 30
             }
         },
@@ -60,43 +71,7 @@
             }
         }
     };
-    const client = mqtt.connect(MQTT_BROKER_URL);
-    client.on('connect', () => {
-        client.subscribe(SUBSCRIBE_TOPIC, { qos: 2 });
-    });
-    client.on('message', (topic, message) => {
-        try {
-            const payload = JSON.parse(message.toString());
-            if (payload.location && payload.room && typeof payload.value === 'number' && payload.unit === '°C' && payload.timestamp) {
-                const schoolName = payload.location;
-                const roomName = payload.room;
-                const fullLocationName = `${schoolName} - ${roomName}`;
-                const otherSchools = ["Alfons-Kern-Schule", "Johanna-Wittum-Schule", "Hochschule Pforzheim"];
-                if (!otherSchools.includes(schoolName)) return;
-                const temperature = payload.value;
-                const timestamp = new Date(payload.timestamp * 1000);
-                if (!schoolData[fullLocationName]) {
-                    schoolData[fullLocationName] = {
-                        labels: [],
-                        data: [],
-                        chart: null
-                    };
-                    createChartForLocation(fullLocationName);
-                }
-                const locationData = schoolData[fullLocationName];
-                locationData.labels.push(timestamp);
-                locationData.data.push(temperature);
-                const MAX_DATA_POINTS = 60;
-                if (locationData.labels.length > MAX_DATA_POINTS) {
-                    locationData.labels.shift();
-                    locationData.data.shift();
-                }
-                if (locationData.chart) {
-                    locationData.chart.update();
-                }
-            }
-        } catch (e) {}
-    });
+
     function createChartForLocation(locationName) {
         const container = document.getElementById('charts-container');
         const chartDiv = document.createElement('div');
@@ -127,6 +102,34 @@
             options: CHART_OPTIONS
         });
     }
+
+    function fillWithPlaceholderData() {
+        const now = new Date();
+        demoSchools.forEach(school => {
+            const fullLocationName = `${school.location} - ${school.room}`;
+            if (!schoolData[fullLocationName]) {
+                schoolData[fullLocationName] = {
+                    labels: [],
+                    data: [],
+                    chart: null
+                };
+                createChartForLocation(fullLocationName);
+            }
+            const locationData = schoolData[fullLocationName];
+            locationData.labels.length = 0;
+            locationData.data.length = 0;
+            for (let i = 0; i < school.values.length; i++) {
+                let t = new Date(now.getTime() - (school.values.length - 1 - i) * 30000);
+                locationData.labels.push(t);
+                locationData.data.push(school.values[i]);
+            }
+            if (locationData.chart) {
+                locationData.chart.update();
+            }
+        });
+    }
+
+    fillWithPlaceholderData();
 </script>
 </body>
 </html>
