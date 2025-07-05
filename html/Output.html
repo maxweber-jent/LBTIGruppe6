@@ -1,135 +1,192 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gruppe 6: Temperatur (Andere Schulen, Beispielwerte)</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        h1 { color: #333; }
-        .chart-container {
-            width: 80%;
-            max-width: 900px;
-            margin: 20px auto;
-            border: 1px solid #ccc;
-            padding: 10px;
-            box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
-        }
-        .chart-title {
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 1.2em;
-            font-weight: bold;
-        }
-        canvas {
-            display: block;
-            margin: 0 auto;
-            height: 300px !important;
-            max-height: 300px !important;
-            width: 100% !important;
-            max-width: 800px !important;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gruppe 6: Temperatur (Andere Schulen, Beispielwerte)</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { color: #333; }
+    .chart-container {
+      width: 80%;
+      max-width: 900px;
+      margin: 20px auto;
+      border: 1px solid #ccc;
+      padding: 10px;
+      box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+    }
+    .chart-title {
+        text-align: center;
+        margin-bottom: 10px;
+        font-size: 1.2em;
+        font-weight: bold;
+    }
+    canvas {
+        display: block;
+        margin: 0 auto;
+        height: 300px !important;
+        max-height: 300px !important;
+        width: 100% !important;
+        max-width: 800px !important;
+    }
+    .button-bar {
+      margin: 20px 0;
+      text-align: center;
+    }
+    .button-bar button {
+      font-size: 1em;
+      padding: 8px 24px;
+      margin: 0 10px;
+      border-radius: 5px;
+      border: 1px solid #888;
+      background: #f0f0f0;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .button-bar button:active {
+      background: #d0d0d0;
+    }
+    #disconnected-message {
+      text-align: center;
+      color: #b00;
+      font-size: 1.1em;
+      margin-top: 40px;
+      display: none;
+    }
+  </style>
 </head>
 <body>
-<h1>Serverraum-Überwachung: Temperatur (Andere Schulen, Beispielwerte)</h1>
-<p>Beispielhafte Temperaturdaten von Alfons-Kern-Schule, Johanna-Wittum-Schule und Hochschule Pforzheim.</p>
-<div id="charts-container"></div>
-<script>
+  <h1>Serverraum-Überwachung: Temperatur (Andere Schulen, Beispielwerte)</h1>
+  <p>Beispielhafte Temperaturdaten von Alfons-Kern-Schule, Johanna-Wittum-Schule und Hochschule Pforzheim.</p>
+  <div class="button-bar">
+    <button id="connectBtn">Connect M5Stack</button>
+    <button id="disconnectBtn">Disconnect M5Stack</button>
+  </div>
+  <div id="disconnected-message">M5Stack ist nicht verbunden.</div>
+  <div id="charts-container"></div>
+  <script>
     const demoSchools = [
-        { location: "Alfons-Kern-Schule", room: "Serverraum", values: [22.3, 22.6, 22.7, 22.5, 22.8, 22.9, 23.1] },
-        { location: "Johanna-Wittum-Schule", room: "Keller Server-Rack", values: [20.9, 21.1, 21.2, 21.0, 21.3, 21.5, 21.7] },
-        { location: "Hochschule Pforzheim", room: "Keller Serverraum", values: [23.8, 24.0, 23.9, 24.1, 24.3, 24.2, 24.4] }
+      { location: "Alfons-Kern-Schule", room: "Serverraum", values: [22.3, 22.6, 22.7, 22.5, 22.8, 22.9, 23.1] },
+      { location: "Johanna-Wittum-Schule", room: "Keller Server-Rack", values: [20.9, 21.1, 21.2, 21.0, 21.3, 21.5, 21.7] },
+      { location: "Hochschule Pforzheim", room: "Keller Serverraum", values: [23.8, 24.0, 23.9, 24.1, 24.3, 24.2, 24.4] }
     ];
     const schoolData = {};
+    let connected = true;
+
     const CHART_OPTIONS = {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            x: {
-                title: { display: true, text: 'Zeit' },
-                type: 'time',
-                time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } },
-                ticks: { source: 'auto' }
-            },
-            y: {
-                title: { display: true, text: 'Temperatur (°C)' },
-                min: 0,
-                max: 30
-            }
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: { display: true, text: 'Zeit' },
+          type: 'time',
+          time: { unit: 'minute', displayFormats: { minute: 'HH:mm' } },
+          ticks: { source: 'auto' }
         },
-        plugins: {
-            legend: { display: false },
-            tooltip: {
-                callbacks: {
-                    label: function(context) {
-                        return context.dataset.label + ': ' + context.parsed.y + '°C';
-                    }
-                }
-            }
+        y: {
+          title: { display: true, text: 'Temperatur (°C)' },
+          min: 15,
+          max: 30
         }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return context.dataset.label + ': ' + context.parsed.y + '°C';
+            }
+          }
+        }
+      }
     };
 
     function createChartForLocation(locationName) {
-        const container = document.getElementById('charts-container');
-        const chartDiv = document.createElement('div');
-        chartDiv.className = 'chart-container';
-        chartDiv.id = `chart-${locationName.replace(/\s/g, '-')}`;
-        container.appendChild(chartDiv);
-        const title = document.createElement('div');
-        title.className = 'chart-title';
-        title.textContent = `Temperatur: ${locationName}`;
-        chartDiv.appendChild(title);
-        const canvas = document.createElement('canvas');
-        canvas.id = `canvas-${locationName.replace(/\s/g, '-')}`;
-        chartDiv.appendChild(canvas);
-        const ctx = canvas.getContext('2d');
-        const locationData = schoolData[locationName];
-        locationData.chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: locationData.labels,
-                datasets: [{
-                    label: 'Temperatur (°C)',
-                    data: locationData.data,
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1,
-                    fill: false
-                }]
-            },
-            options: CHART_OPTIONS
-        });
+      const container = document.getElementById('charts-container');
+      const chartDiv = document.createElement('div');
+      chartDiv.className = 'chart-container';
+      chartDiv.id = `chart-${locationName.replace(/\s/g, '-')}`;
+      container.appendChild(chartDiv);
+      const title = document.createElement('div');
+      title.className = 'chart-title';
+      title.textContent = `Temperatur: ${locationName}`;
+      chartDiv.appendChild(title);
+      const canvas = document.createElement('canvas');
+      canvas.id = `canvas-${locationName.replace(/\s/g, '-')}`;
+      chartDiv.appendChild(canvas);
+      const ctx = canvas.getContext('2d');
+      const locationData = schoolData[locationName];
+      locationData.chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: locationData.labels,
+          datasets: [{
+            label: 'Temperatur (°C)',
+            data: locationData.data,
+            borderColor: 'rgb(75, 192, 192)',
+            tension: 0.1,
+            fill: false
+          }]
+        },
+        options: CHART_OPTIONS
+      });
     }
 
     function fillWithPlaceholderData() {
-        const now = new Date();
-        demoSchools.forEach(school => {
-            const fullLocationName = `${school.location} - ${school.room}`;
-            if (!schoolData[fullLocationName]) {
-                schoolData[fullLocationName] = {
-                    labels: [],
-                    data: [],
-                    chart: null
-                };
-                createChartForLocation(fullLocationName);
-            }
-            const locationData = schoolData[fullLocationName];
-            locationData.labels.length = 0;
-            locationData.data.length = 0;
-            for (let i = 0; i < school.values.length; i++) {
-                let t = new Date(now.getTime() - (school.values.length - 1 - i) * 30000);
-                locationData.labels.push(t);
-                locationData.data.push(school.values[i]);
-            }
-            if (locationData.chart) {
-                locationData.chart.update();
-            }
-        });
+      const now = new Date();
+      demoSchools.forEach(school => {
+        const fullLocationName = `${school.location} - ${school.room}`;
+        if (!schoolData[fullLocationName]) {
+          schoolData[fullLocationName] = {
+            labels: [],
+            data: [],
+            chart: null
+          };
+          createChartForLocation(fullLocationName);
+        }
+        const locationData = schoolData[fullLocationName];
+        locationData.labels.length = 0;
+        locationData.data.length = 0;
+        for (let i = 0; i < school.values.length; i++) {
+          let t = new Date(now.getTime() - (school.values.length - 1 - i) * 30000);
+          locationData.labels.push(t);
+          locationData.data.push(school.values[i]);
+        }
+        if (locationData.chart) {
+          locationData.chart.update();
+        }
+      });
     }
 
+    function showCharts() {
+      document.getElementById('charts-container').style.display = '';
+      document.getElementById('disconnected-message').style.display = 'none';
+    }
+
+    function hideCharts() {
+      document.getElementById('charts-container').style.display = 'none';
+      document.getElementById('disconnected-message').style.display = '';
+    }
+
+    document.getElementById('connectBtn').addEventListener('click', function() {
+      if (!connected) {
+        connected = true;
+        showCharts();
+      }
+    });
+
+    document.getElementById('disconnectBtn').addEventListener('click', function() {
+      if (connected) {
+        connected = false;
+        hideCharts();
+      }
+    });
+
+    // Initial load
     fillWithPlaceholderData();
-</script>
+    showCharts();
+  </script>
 </body>
 </html>
